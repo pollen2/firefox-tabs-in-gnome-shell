@@ -13,7 +13,7 @@
                 out.push(actor);
             actor.get_children().forEach(walk);
         };
-        walk(indicator()._tabsSection.actor);
+        walk(indicator()._listSection.actor);
         return out;
     };
     const isA = name => actor => actor.constructor.name.includes(name);
@@ -31,15 +31,35 @@
         tabItems: () => find(isA('TabItem')),
         visibleTabItems: () => find(a => isA('TabItem')(a) && a.is_mapped()),
         headers: () => find(isA('HeaderItem')),
-        moreItems: () => find(a => isA('MoreItem')(a) && a.visible),
+        moreItems: () => find(a => isA('MoreItem')(a) && a.is_mapped()),
+        resultItems: () => find(a => isA('TabItem')(a) && a.is_mapped() &&
+            indicator()._resultsSection.actor.contains(a)),
+        focused: () => global.stage.get_key_focus(),
+
+        // Key presses through the virtual keyboard session.sh creates.
+        key(keyval) {
+            const t = GLib.get_monotonic_time();
+            globalThis._keyboard.notify_keyval(t, keyval, Clutter.KeyState.PRESSED);
+            globalThis._keyboard.notify_keyval(t + 1000, keyval, Clutter.KeyState.RELEASED);
+        },
+
+        type(text) {
+            for (const char of text)
+                T.key(Clutter.unicode_to_keysym(char.codePointAt(0)));
+        },
 
         scrollToStart() {
-            indicator()._tabsSection.actor.get_parent().vadjustment.value = 0;
+            indicator()._listSection.actor.get_parent().vadjustment.value = 0;
         },
 
         scrollToEnd() {
-            const adjustment = indicator()._tabsSection.actor.get_parent().vadjustment;
+            const adjustment = indicator()._listSection.actor.get_parent().vadjustment;
             adjustment.value = adjustment.upper - adjustment.page_size;
+        },
+
+        // Hovering a row moves keyboard focus to it, as in any shell menu.
+        pointerAway() {
+            pointer.notify_absolute_motion(GLib.get_monotonic_time(), 10, 790);
         },
 
         click(actor, button = Clutter.BUTTON_PRIMARY) {

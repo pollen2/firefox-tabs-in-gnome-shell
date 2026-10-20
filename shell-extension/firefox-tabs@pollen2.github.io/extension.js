@@ -1,3 +1,4 @@
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
@@ -10,8 +11,12 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {InstanceWatcher} from './instances.js';
-import {TabItem, renderTree} from './menu.js';
+import {TabItem, renderResults, renderTree} from './menu.js';
+import {TabIndex} from './search.js';
 import {WindowRaiser} from './windows.js';
+
+// Printable characters typed while a row has focus go to the search box.
+const PRINTABLE = /^[\p{L}\p{N}\p{P}\p{S}]$/u;
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
@@ -26,38 +31,78 @@ class Indicator extends PanelMenu.Button {
 
         this._expandedState = new Map();
         this._renderedKey = null;
+        this._rendered = [];
+        this._index = null;
+        // "<bus name>:<tab id>" -> rows showing that tab (tree and results).
+        this._rows = new Map();
+        this._focusSource = 0;
         this._raiser = new WindowRaiser();
         this._buildMenu();
 
         this._watcher = new InstanceWatcher(() => this._syncVisibility());
         this._syncVisibility();
         this.menu.connect('open-state-changed', (_menu, open) => {
-            if (open)
+            if (open) {
                 this._refresh();
+                this._focusSearchSoon();
+            } else {
+                this._entry.text = '';
+            }
         });
+        this.menu.actor.connect('key-press-event', (_actor, event) => this._redirectTypingToSearch(event));
     }
 
     _buildMenu() {
+        this._entry = new St.Entry({
+            style_class: 'ff-search-entry',
+            hint_text: 'Search tabs…',
+            can_focus: true,
+            x_expand: true,
+            primary_icon: new St.Icon({icon_name: 'edit-find-symbolic', style_class: 'ff-search-icon'}),
+        });
+        this._entry.clutter_text.connect('text-changed', () => this._onSearchChanged());
+        this._entry.clutter_text.connect('key-press-event', (_actor, event) => this._onEntryKeyPress(event));
+        this.menu.box.add_child(new St.Bin({style_class: 'ff-search-box', child: this._entry, x_expand: true}));
+
         // The menu's max-height comes from PanelMenu.Button; the tab list
         // scrolls inside it. Adding the section first wires its items to the
         // menu (activation closes it), then it is moved into the scroll view.
-        this._tabsSection = new PopupMenu.PopupMenuSection();
-        this.menu.addMenuItem(this._tabsSection);
-        this.menu.box.remove_child(this._tabsSection.actor);
-        const scrollView = new St.ScrollView({
+        this._listSection = new PopupMenu.PopupMenuSection();
+        this.menu.addMenuItem(this._listSection);
+        this.menu.box.remove_child(this._listSection.actor);
+        this._scrollView = new St.ScrollView({
             style_class: 'ff-tabs-scroll',
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
             overlay_scrollbars: true,
-            child: this._tabsSection.actor,
+            child: this._listSection.actor,
         });
-        this.menu.box.add_child(scrollView);
+        this.menu.box.add_child(this._scrollView);
+
+        // The tree stays built while searching; results replace it on screen.
+        this._treeSection = new PopupMenu.PopupMenuSection();
+        this._listSection.addMenuItem(this._treeSection);
+        this._resultsSection = new PopupMenu.PopupMenuSection();
+        this._resultsSection.actor.hide();
+        this._listSection.addMenuItem(this._resultsSection);
     }
 
     _syncVisibility() {
         this.visible = this._watcher.instances.size > 0;
         if (!this.visible)
             this.menu.close();
+    }
+
+    // The menu manager focuses the menu itself right after opening it.
+    _focusSearchSoon() {
+        if (this._focusSource)
+            return;
+        this._focusSource = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._focusSource = 0;
+            if (this.menu.isOpen)
+                this._entry.grab_key_focus();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     async _refresh() {
@@ -75,23 +120,41 @@ class Indicator extends PanelMenu.Button {
         if (key === this._renderedKey)
             return;
         this._renderedKey = key;
+        this._rendered = ready;
+        this._index = null;
+        this._tabIcon = this._tabIconLookup(ready);
 
-        this._tabsSection.removeAll();
+        this._treeSection.removeAll();
         if (ready.length === 0) {
-            this._tabsSection.addMenuItem(new PopupMenu.PopupMenuItem('Firefox is not answering', {reactive: false}));
+            this._treeSection.addMenuItem(new PopupMenu.PopupMenuItem('Firefox is not answering', {reactive: false}));
             return;
         }
-        const tabIcon = this._tabIconLookup(ready);
-        renderTree(this._tabsSection, ready, {
+        renderTree(this._treeSection, ready, {
             expandedState: this._expandedState,
-            makeTabItem: (instance, tab, depth) => new TabItem(tab, {
-                depth,
-                icon: tabIcon(instance, tab),
-                fallbackIcon: this._icons.page,
-                onActivate: () => this._activateTab(instance, tab),
-                onClose: item => this._closeTab(instance, item),
-            }),
+            makeTabItem: this._makeTabItem.bind(this),
         });
+        // Typed before the snapshot arrived.
+        this._onSearchChanged();
+    }
+
+    _makeTabItem(instance, tab, depth) {
+        const item = new TabItem(tab, {
+            depth,
+            icon: this._tabIcon(instance, tab),
+            fallbackIcon: this._icons.page,
+            onActivate: () => this._activateTab(instance, tab),
+            onClose: () => this._closeTab(instance, tab),
+        });
+        const key = `${instance.name}:${tab.id}`;
+        if (!this._rows.has(key))
+            this._rows.set(key, new Set());
+        this._rows.get(key).add(item);
+        item.connect('destroy', () => {
+            this._rows.get(key)?.delete(item);
+            if (this._rows.get(key)?.size === 0)
+                this._rows.delete(key);
+        });
+        return item;
     }
 
     // Favicons are files the host writes, named by the snapshot's `icon` key.
@@ -119,6 +182,46 @@ class Indicator extends PanelMenu.Button {
         };
     }
 
+    _onSearchChanged() {
+        const query = this._entry.text.trim();
+        this._treeSection.actor.visible = query === '';
+        this._resultsSection.actor.visible = query !== '';
+        this._resultsSection.removeAll();
+        if (query === '' || this._rendered.length === 0)
+            return;
+        this._index ??= new TabIndex(this._rendered);
+        renderResults(this._resultsSection, this._index.search(query), {
+            makeTabItem: this._makeTabItem.bind(this),
+        });
+        this._scrollView.vadjustment.value = 0;
+    }
+
+    _onEntryKeyPress(event) {
+        const symbol = event.get_key_symbol();
+        if (symbol === Clutter.KEY_Down) {
+            this._listSection.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
+            return Clutter.EVENT_STOP;
+        }
+        if (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter) {
+            if (this._resultsSection.actor.visible)
+                this._resultsSection.box.get_children().find(a => a instanceof TabItem)?.activate(event);
+            return Clutter.EVENT_STOP;
+        }
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    _redirectTypingToSearch(event) {
+        if (this._entry.clutter_text.has_key_focus())
+            return Clutter.EVENT_PROPAGATE;
+        const modifiers = event.get_state() & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK);
+        const text = event.get_key_unicode();
+        if (modifiers || !PRINTABLE.test(text))
+            return Clutter.EVENT_PROPAGATE;
+        this._entry.grab_key_focus();
+        this._entry.clutter_text.insert_text(text, this._entry.clutter_text.get_cursor_position());
+        return Clutter.EVENT_STOP;
+    }
+
     async _activateTab(instance, tab) {
         const windows = instance.snapshot?.windows ?? [];
         const windowId = windows.find(w => w.tabs.some(t => t.id === tab.id))?.id;
@@ -131,19 +234,23 @@ class Indicator extends PanelMenu.Button {
         }
     }
 
-    async _closeTab(instance, item) {
+    async _closeTab(instance, tab) {
         try {
-            await instance.closeTabs([item.tab.id]);
+            await instance.closeTabs([tab.id]);
         } catch (e) {
             console.error('firefox-tabs: closing tab failed', e);
             return;
         }
-        if (item.has_key_focus())
-            this._tabsSection.actor.navigate_focus(item, St.DirectionType.DOWN, true);
-        item.destroy();
+        for (const item of [...this._rows.get(`${instance.name}:${tab.id}`) ?? []]) {
+            if (item.has_key_focus())
+                this._listSection.actor.navigate_focus(item, St.DirectionType.DOWN, true);
+            item.destroy();
+        }
     }
 
     _onDestroy() {
+        if (this._focusSource)
+            GLib.source_remove(this._focusSource);
         this._watcher.destroy();
         this._watcher = null;
         this._raiser.destroy();

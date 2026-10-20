@@ -4,8 +4,12 @@ A top bar menu listing your open Firefox tabs, organized by window and tab
 group. Click a tab to switch to it. Middle-click it, click its ×, or press
 Delete to close it.
 
-**Status: early development.** Switching and closing tabs work, with favicons.
-Search and moving tabs between windows and groups come next.
+Type to search: every word must appear in a tab's title or address, ignoring
+case and accents. Enter switches to the first result, and Down moves into the
+list.
+
+**Status: early development.** Switching, closing and searching tabs work,
+with favicons. Moving tabs between windows and groups comes next.
 
 ## How it works
 

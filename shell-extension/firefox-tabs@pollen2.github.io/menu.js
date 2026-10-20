@@ -15,6 +15,15 @@ function keepMenuOpen(item) {
     GObject.signal_stop_emission_by_name(item, 'activate');
 }
 
+// A destroyed row that is still highlighted stays referenced by the parent
+// sections it bubbled up to. Un-highlighting it first lets them let go.
+function releaseOnDestroy(item) {
+    item.connect('destroy', () => {
+        if (item.active)
+            item.active = false;
+    });
+}
+
 function ellipsizedLabel(text, styleClass) {
     const label = new St.Label({
         text,
@@ -30,6 +39,7 @@ const HeaderItem = GObject.registerClass(
 class HeaderItem extends PopupMenu.PopupBaseMenuItem {
     _init(text, {depth, count, color, onToggle}) {
         super._init({style_class: `ff-header ff-depth-${depth}`});
+        releaseOnDestroy(this);
         this._arrow = new St.Icon({style_class: 'popup-menu-arrow', y_align: Clutter.ActorAlign.CENTER});
         this.add_child(this._arrow);
         if (color)
@@ -58,6 +68,7 @@ export const TabItem = GObject.registerClass(
 class TabItem extends PopupMenu.PopupBaseMenuItem {
     _init(tab, {depth, icon, fallbackIcon, onActivate, onClose}) {
         super._init({style_class: `ff-tab ff-depth-${depth}`});
+        releaseOnDestroy(this);
         this.tab = tab;
         this._onClose = onClose;
 
@@ -166,6 +177,7 @@ const MoreItem = GObject.registerClass(
 class MoreItem extends PopupMenu.PopupBaseMenuItem {
     _init(depth, onActivate) {
         super._init({style_class: `ff-more ff-depth-${depth}`});
+        releaseOnDestroy(this);
         this.label = new St.Label({y_align: Clutter.ActorAlign.CENTER});
         this.add_child(this.label);
         this.label_actor = this.label;
@@ -213,6 +225,15 @@ function addChunked(section, entries, depth, addEntry) {
         more.setRemaining(entries.length - shown);
     };
     showNext();
+}
+
+// Search results as a flat list. `matches` are {instance, tab}.
+export function renderResults(section, matches, {makeTabItem}) {
+    if (matches.length === 0) {
+        section.addMenuItem(new PopupMenu.PopupMenuItem('No matching tabs', {reactive: false}));
+        return;
+    }
+    addChunked(section, matches, 0, ({instance, tab}) => section.addMenuItem(makeTabItem(instance, tab, 0)));
 }
 
 // A window's tabs as rows: ungrouped tabs, or one entry per tab group
