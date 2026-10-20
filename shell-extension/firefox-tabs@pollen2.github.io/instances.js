@@ -47,6 +47,24 @@ class Instance {
     async closeTabs(tabIds) {
         await this._call('CloseTabs', new GLib.Variant('(ax)', [tabIds]));
     }
+
+    // index -1: at the end of the window.
+    async moveTabs(tabIds, windowId, index = -1) {
+        await this._call('MoveTabs', new GLib.Variant('(axxi)', [tabIds, windowId, index]));
+    }
+
+    async moveTabToNewWindow(tabId) {
+        await this._call('MoveTabToNewWindow', new GLib.Variant('(x)', [tabId]));
+    }
+
+    // groupId -1: a new group in windowId.
+    async groupTabs(tabIds, groupId, windowId = -1) {
+        await this._call('GroupTabs', new GLib.Variant('(axxx)', [tabIds, groupId, windowId]));
+    }
+
+    async ungroupTabs(tabIds) {
+        await this._call('UngroupTabs', new GLib.Variant('(ax)', [tabIds]));
+    }
 }
 
 export class InstanceWatcher {

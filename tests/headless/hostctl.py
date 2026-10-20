@@ -7,6 +7,7 @@
     hostctl.py group ID,ID          new group from these tabs
     hostctl.py new-window ID        move a tab to a new window
     hostctl.py icons                each tab's favicon file and its size
+    hostctl.py tab ID               "window N of M, group G|none"
 """
 
 import json
@@ -48,6 +49,13 @@ elif command == 'group':
     print(call('GroupTabs', GLib.Variant('(axxx)', (ids, -1, -1)))[0])
 elif command == 'new-window':
     call('MoveTabToNewWindow', GLib.Variant('(x)', (int(sys.argv[2]),)))
+elif command == 'tab':
+    s = snapshot()
+    tab_id = int(sys.argv[2])
+    for index, w in enumerate(s['windows']):
+        for t in w['tabs']:
+            if t['id'] == tab_id:
+                print(f"window {index + 1} of {len(s['windows'])}, group {'none' if t['groupId'] == -1 else t['groupId']}")
 elif command == 'icons':
     icon_dir = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'firefox-tabs', 'icons')
     for w in snapshot()['windows']:

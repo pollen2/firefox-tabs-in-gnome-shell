@@ -35,6 +35,26 @@
         resultItems: () => find(a => isA('TabItem')(a) && a.is_mapped() &&
             indicator()._resultsSection.actor.contains(a)),
         focused: () => global.stage.get_key_focus(),
+        actionItems: () => find(a => (isA('ActionItem')(a) || isA('BackItem')(a)) && a.is_mapped()),
+        action: label => T.actionItems().find(a => a.label.text === label),
+
+        searchFor(text) {
+            indicator()._entry.text = text;
+        },
+
+        tab: tabId => T.instance().snapshot.windows.flatMap(w => w.tabs).find(t => t.id === tabId),
+
+        // Right-clicks the tab's row in the search results; search for its
+        // title first and let the results be laid out.
+        rightClickResult(tabId) {
+            T.click(T.resultItems().find(i => i.tab.id === tabId), Clutter.BUTTON_SECONDARY);
+        },
+
+        // The other window's entry under "Move to window".
+        otherWindowTitle(tabId) {
+            const other = T.instance().snapshot.windows.find(w => !w.tabs.some(t => t.id === tabId));
+            return other.tabs.find(t => t.active).title;
+        },
 
         // Key presses through the virtual keyboard session.sh creates.
         key(keyval) {

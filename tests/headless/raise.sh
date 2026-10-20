@@ -1,41 +1,10 @@
 # Raising the right window with a real Firefox, including windows whose
-# titles are identical. Needs the native host registered
-# (scripts/install-dev.sh) and network access for one page.
-# Sourced by session.sh. FIREFOX selects the browser binary.
+# titles are identical, and favicons. Needs network access for three pages.
+# Sourced by session.sh.
 
-FIREFOX=${FIREFOX:-$(command -v firefox-esr || command -v firefox)}
-CTL="python3 $HERE/hostctl.py"
-if [ ! -e "$HOME/.mozilla/native-messaging-hosts/io.github.pollen2.firefox_tabs.json" ]; then
-    echo "FAIL native host not registered: run scripts/install-dev.sh"
-    return
-fi
-
-profile="$WORK/profile"
-mkdir -p "$profile/extensions"
-python3 -I - "$ROOT/webext" "$profile/extensions/firefox-tabs@pollen2.github.io.xpi" <<'EOF'
-import os, sys, zipfile
-src, dest = sys.argv[1:]
-with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as z:
-    for name in os.listdir(src):
-        z.write(os.path.join(src, name), name)
-EOF
-cat > "$profile/user.js" <<'EOF'
-user_pref("xpinstall.signatures.required", false);
-user_pref("extensions.autoDisableScopes", 0);
-user_pref("browser.shell.checkDefaultBrowser", false);
-user_pref("browser.startup.homepage_override.mstone", "ignore");
-user_pref("browser.aboutwelcome.enabled", false);
-user_pref("datareporting.policy.dataSubmissionEnabled", false);
-user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
-user_pref("toolkit.startup.max_resumed_crashes", -1);
-EOF
-
-MOZ_ENABLE_WAYLAND=1 "$FIREFOX" --no-remote --profile "$profile" \
-    about:robots about:mozilla about:robots https://www.debian.org/ about:robots \
-    https://github.com/ https://en.wikipedia.org/wiki/GNOME >"$OUT/$NAME.firefox.log" 2>&1 &
-FF=$!
-for _ in $(seq 60); do [ -n "$($CTL name 2>/dev/null)" ] && break; sleep 0.5; done
-sleep 2
+source "$HERE/firefox.sh"
+start_firefox about:robots about:mozilla about:robots https://www.debian.org/ about:robots \
+    https://github.com/ https://en.wikipedia.org/wiki/GNOME || return
 read -r R1 MOZ RA DEB RB _ <<< "$($CTL ids)"
 check "Firefox instance found" '!!T.instance()'
 

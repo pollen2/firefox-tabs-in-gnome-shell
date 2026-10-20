@@ -11,20 +11,20 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 // Keeps the menu open: PopupMenuBase closes it from an 'activate' handler
 // connected AFTER ours.
-function keepMenuOpen(item) {
+export function keepMenuOpen(item) {
     GObject.signal_stop_emission_by_name(item, 'activate');
 }
 
 // A destroyed row that is still highlighted stays referenced by the parent
 // sections it bubbled up to. Un-highlighting it first lets them let go.
-function releaseOnDestroy(item) {
+export function releaseOnDestroy(item) {
     item.connect('destroy', () => {
         if (item.active)
             item.active = false;
     });
 }
 
-function ellipsizedLabel(text, styleClass) {
+export function ellipsizedLabel(text, styleClass) {
     const label = new St.Label({
         text,
         style_class: styleClass,
@@ -66,11 +66,12 @@ class HeaderItem extends PopupMenu.PopupBaseMenuItem {
 
 export const TabItem = GObject.registerClass(
 class TabItem extends PopupMenu.PopupBaseMenuItem {
-    _init(tab, {depth, icon, fallbackIcon, onActivate, onClose}) {
+    _init(tab, {depth, icon, fallbackIcon, onActivate, onClose, onShowActions}) {
         super._init({style_class: `ff-tab ff-depth-${depth}`});
         releaseOnDestroy(this);
         this.tab = tab;
         this._onClose = onClose;
+        this._onShowActions = onShowActions;
 
         // St loads icons in the background and caches them by file.
         this.icon = new St.Icon({
@@ -115,6 +116,10 @@ class TabItem extends PopupMenu.PopupBaseMenuItem {
             if (this._isCloseClick(event)) {
                 keepMenuOpen(this);
                 onClose(this);
+            } else if (event?.type() === Clutter.EventType.BUTTON_RELEASE &&
+                       event.get_button() === Clutter.BUTTON_SECONDARY) {
+                keepMenuOpen(this);
+                onShowActions(this);
             } else {
                 onActivate(this);
             }
@@ -133,8 +138,14 @@ class TabItem extends PopupMenu.PopupBaseMenuItem {
     }
 
     vfunc_key_press_event(event) {
-        if (event.get_key_symbol() === Clutter.KEY_Delete) {
+        const symbol = event.get_key_symbol();
+        if (symbol === Clutter.KEY_Delete) {
             this._onClose(this);
+            return Clutter.EVENT_STOP;
+        }
+        const shift = (event.get_state() & Clutter.ModifierType.SHIFT_MASK) !== 0;
+        if (symbol === Clutter.KEY_Menu || (shift && symbol === Clutter.KEY_F10)) {
+            this._onShowActions(this);
             return Clutter.EVENT_STOP;
         }
         return super.vfunc_key_press_event(event);
@@ -253,6 +264,12 @@ function windowEntries(window, groups) {
     return entries;
 }
 
+// A window is known by its active tab, as in its title bar.
+export function windowTitle(window) {
+    const active = window.tabs.find(t => t.active);
+    return `${active?.title || 'Window'}${window.incognito ? ' (private)' : ''}`;
+}
+
 // Renders instances' snapshots into `section`. `expandedState` maps node keys
 // to the user's last choice, so it survives re-renders.
 export function renderTree(section, instances, {expandedState, makeTabItem}) {
@@ -294,9 +311,7 @@ export function renderTree(section, instances, {expandedState, makeTabItem}) {
             addWindowContent(section, instance, window, 0);
             continue;
         }
-        const active = window.tabs.find(t => t.active);
-        const title = `${active?.title || 'Window'}${window.incognito ? ' (private)' : ''}`;
-        node(section, `w:${instance.name}:${window.id}`, title, {
+        node(section, `w:${instance.name}:${window.id}`, windowTitle(window), {
             depth: 0,
             count: window.tabs.length,
             expanded: w === current,

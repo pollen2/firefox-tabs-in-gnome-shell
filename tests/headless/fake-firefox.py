@@ -110,6 +110,8 @@ def main():
                 reply['result'] = {'id': tab['id'], 'windowId': window_id, 'title': tab['title']}
             else:
                 reply.update(ok=False, error=f"Invalid tab ID: {a['tabId']}")
+        elif op == 'move' and a['windowId'] not in {w['id'] for w in snapshot['windows']}:
+            reply.update(ok=False, error=f"Invalid window ID: {a['windowId']}")
         elif op == 'group':
             reply['result'] = a['groupId'] if a['groupId'] != -1 else 99999
         send(host.stdin, reply)

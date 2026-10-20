@@ -10,6 +10,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {renderActions} from './actions.js';
 import {InstanceWatcher} from './instances.js';
 import {TabItem, renderResults, renderTree} from './menu.js';
 import {TabIndex} from './search.js';
@@ -36,6 +37,8 @@ class Indicator extends PanelMenu.Button {
         // "<bus name>:<tab id>" -> rows showing that tab (tree and results).
         this._rows = new Map();
         this._focusSource = 0;
+        this._showingActions = false;
+        this._actionsOrigin = null;
         this._raiser = new WindowRaiser();
         this._buildMenu();
 
@@ -46,6 +49,7 @@ class Indicator extends PanelMenu.Button {
                 this._refresh();
                 this._focusSearchSoon();
             } else {
+                this._hideActions();
                 this._entry.text = '';
             }
         });
@@ -62,7 +66,8 @@ class Indicator extends PanelMenu.Button {
         });
         this._entry.clutter_text.connect('text-changed', () => this._onSearchChanged());
         this._entry.clutter_text.connect('key-press-event', (_actor, event) => this._onEntryKeyPress(event));
-        this.menu.box.add_child(new St.Bin({style_class: 'ff-search-box', child: this._entry, x_expand: true}));
+        this._searchBox = new St.Bin({style_class: 'ff-search-box', child: this._entry, x_expand: true});
+        this.menu.box.add_child(this._searchBox);
 
         // The menu's max-height comes from PanelMenu.Button; the tab list
         // scrolls inside it. Adding the section first wires its items to the
@@ -85,6 +90,19 @@ class Indicator extends PanelMenu.Button {
         this._resultsSection = new PopupMenu.PopupMenuSection();
         this._resultsSection.actor.hide();
         this._listSection.addMenuItem(this._resultsSection);
+        // A tab's actions (right-click) replace both while shown.
+        this._actionsSection = new PopupMenu.PopupMenuSection();
+        this._actionsSection.actor.hide();
+        this._listSection.addMenuItem(this._actionsSection);
+    }
+
+    // Shows the tree, the search results or a tab's actions.
+    _syncView() {
+        const searching = this._entry.text.trim() !== '';
+        this._searchBox.visible = !this._showingActions;
+        this._treeSection.actor.visible = !this._showingActions && !searching;
+        this._resultsSection.actor.visible = !this._showingActions && searching;
+        this._actionsSection.actor.visible = this._showingActions;
     }
 
     _syncVisibility() {
@@ -144,6 +162,7 @@ class Indicator extends PanelMenu.Button {
             fallbackIcon: this._icons.page,
             onActivate: () => this._activateTab(instance, tab),
             onClose: () => this._closeTab(instance, tab),
+            onShowActions: origin => this._showActions(instance, tab, origin),
         });
         const key = `${instance.name}:${tab.id}`;
         if (!this._rows.has(key))
@@ -184,8 +203,7 @@ class Indicator extends PanelMenu.Button {
 
     _onSearchChanged() {
         const query = this._entry.text.trim();
-        this._treeSection.actor.visible = query === '';
-        this._resultsSection.actor.visible = query !== '';
+        this._syncView();
         this._resultsSection.removeAll();
         if (query === '' || this._rendered.length === 0)
             return;
@@ -211,7 +229,7 @@ class Indicator extends PanelMenu.Button {
     }
 
     _redirectTypingToSearch(event) {
-        if (this._entry.clutter_text.has_key_focus())
+        if (this._showingActions || this._entry.clutter_text.has_key_focus())
             return Clutter.EVENT_PROPAGATE;
         const modifiers = event.get_state() & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK);
         const text = event.get_key_unicode();
@@ -220,6 +238,56 @@ class Indicator extends PanelMenu.Button {
         this._entry.grab_key_focus();
         this._entry.clutter_text.insert_text(text, this._entry.clutter_text.get_cursor_position());
         return Clutter.EVENT_STOP;
+    }
+
+    _showActions(instance, tab, origin) {
+        const windowId = instance.snapshot.windows.find(w => w.tabs.some(t => t.id === tab.id))?.id ?? -1;
+        // Left over from last time; never destroyed while one of them is
+        // still handling its own activation.
+        this._actionsSection.removeAll();
+        renderActions(this._actionsSection, {
+            snapshot: instance.snapshot,
+            tab,
+            icon: this._tabIcon(instance, tab),
+            fallbackIcon: this._icons.page,
+        }, {
+            back: () => this._hideActions(),
+            close: () => this._run(instance.closeTabs([tab.id])),
+            newWindow: () => this._run(instance.moveTabToNewWindow(tab.id)),
+            moveToWindow: id => this._run(instance.moveTabs([tab.id], id)),
+            group: id => this._run(instance.groupTabs([tab.id], id)),
+            newGroup: () => this._run(instance.groupTabs([tab.id], -1, windowId)),
+            ungroup: () => this._run(instance.ungroupTabs([tab.id])),
+        });
+
+        this._actionsOrigin?.disconnectObject(this);
+        this._actionsOrigin = origin;
+        origin.connectObject('destroy', () => {
+            this._actionsOrigin = null;
+        }, this);
+        this._showingActions = true;
+        this._syncView();
+        this._scrollView.vadjustment.value = 0;
+        this._actionsSection.box.get_first_child()?.grab_key_focus();
+    }
+
+    _hideActions() {
+        if (!this._showingActions)
+            return;
+        this._showingActions = false;
+        this._syncView();
+        this._actionsOrigin?.grab_key_focus();
+        this._actionsOrigin?.disconnectObject(this);
+        this._actionsOrigin = null;
+    }
+
+    // Menu actions: by the time Firefox answers the menu has closed, so a
+    // failure is reported as a notification.
+    _run(promise) {
+        promise.catch(e => {
+            console.error('firefox-tabs: action failed', e);
+            Main.notifyError('Firefox tabs', e.message);
+        });
     }
 
     async _activateTab(instance, tab) {
@@ -251,6 +319,7 @@ class Indicator extends PanelMenu.Button {
     _onDestroy() {
         if (this._focusSource)
             GLib.source_remove(this._focusSource);
+        this._actionsOrigin?.disconnectObject(this);
         this._watcher.destroy();
         this._watcher = null;
         this._raiser.destroy();

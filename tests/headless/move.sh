@@ -1,0 +1,46 @@
+# Moving tabs through the action view with a real Firefox, checking what
+# Firefox actually did. Offline pages only. Sourced by session.sh.
+
+source "$HERE/firefox.sh"
+start_firefox about:robots about:mozilla about:license about:rights about:buildconfig || return
+read -r ROBOTS MOZILLA LICENSE RIGHTS BUILDCONFIG _ <<< "$($CTL ids)"
+check "Firefox instance found" '!!T.instance()'
+
+# act TAB 'JS expression for the action label' — through the menu, as a user would.
+act() {
+    ev 'T.pointerAway(); T.indicator().menu.open()' >/dev/null; sleep 0.6
+    ev "T.searchFor(T.tab($1).title)" >/dev/null; sleep 0.3
+    ev "T.rightClickResult($1)" >/dev/null; sleep 0.4
+    ev "T.click(T.action($2))" >/dev/null; sleep 1.5
+}
+expect_tab() {  # tab, expected "window N of M, group G|none" (G may be a pattern), description
+    local got
+    got=$($CTL tab "$1")
+    case "$got" in $2) echo "PASS $3";; *) echo "FAIL $3: tab is in $got";; esac
+}
+
+act "$BUILDCONFIG" '"Move to new window"'
+expect_tab "$BUILDCONFIG" "window 2 of 2, group none" "Move to new window"
+
+act "$RIGHTS" "T.otherWindowTitle($RIGHTS)"
+expect_tab "$RIGHTS" "window 2 of 2, group none" "Move to window"
+
+act "$LICENSE" '"New group"'
+expect_tab "$LICENSE" "window 1 of 2, group [0-9]*" "New group"
+GROUP=$($CTL tab "$LICENSE" | sed 's/.*group //')
+
+act "$MOZILLA" '"Unnamed group"'
+expect_tab "$MOZILLA" "window 1 of 2, group $GROUP" "Add to a group in the same window"
+
+act "$RIGHTS" '"Unnamed group"'
+expect_tab "$RIGHTS" "window 1 of 2, group $GROUP" "Add to a group in another window brings the tab over"
+
+act "$LICENSE" '"Remove from group"'
+expect_tab "$LICENSE" "* group none" "Remove from group"
+
+ev 'T.pointerAway(); T.indicator().menu.open()' >/dev/null; sleep 0.6
+ev 'T.headers().filter(h => h._arrow.icon_name === "pan-end-symbolic").forEach(h => h.activate(null))' >/dev/null
+shot after-moves
+ev 'T.indicator().menu.close()' >/dev/null
+
+kill $FF; sleep 1

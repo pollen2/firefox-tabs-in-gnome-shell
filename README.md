@@ -4,6 +4,10 @@ A top bar menu listing your open Firefox tabs, organized by window and tab
 group. Click a tab to switch to it. Middle-click it, click its ×, or press
 Delete to close it.
 
+Right-click a tab (or press the Menu key or Shift+F10 on it) to move it: to
+another window, to a new window, into a tab group or a new one, or out of its
+group. Back, Left or Backspace return to the list.
+
 Type to search: every word must appear in a tab's title or address, ignoring
 case and accents. Enter switches to the first result, and Down moves into the
 list.
@@ -12,8 +16,9 @@ To open the menu from the keyboard, set a shortcut in the extension's
 preferences (`gnome-extensions prefs firefox-tabs@pollen2.github.io`). None is
 set by default, so it can't clash with your existing shortcuts.
 
-**Status: early development.** Switching, closing and searching tabs work,
-with favicons and a keyboard shortcut. Moving tabs between windows and groups comes next.
+**Status: early development.** All the planned features work: switching,
+closing, searching and moving tabs, favicons, and a keyboard shortcut. Next
+comes packaging for extensions.gnome.org and addons.mozilla.org. Moving tabs between windows and groups comes next.
 
 ## How it works
 
@@ -70,12 +75,16 @@ tests/headless/run.sh                                      # full stack in a thr
 `tests/headless/run.sh` starts a headless GNOME Shell on a private D-Bus
 session with its own settings, so your session is not touched. It runs:
 
-- `menu.sh`: menu behaviour and speed against a fake Firefox
+- `menu.sh`: menu behaviour, search and speed against a fake Firefox
   (`tests/headless/fake-firefox.py`, also handy for UI work without a browser).
+- `actions.sh`: the right-click action view against the fake Firefox.
 - `shortcut.sh`: the keyboard shortcut, and setting it in the real
   preferences window from the keyboard.
-- `raise.sh`: window raising against a real Firefox with a temporary profile.
-  Needs `scripts/install-dev.sh` first.
+- `raise.sh`: window raising and favicons against a real Firefox with a
+  temporary profile.
+- `move.sh`: moving tabs and groups through the menu against a real Firefox.
+
+The real-Firefox scenarios need `scripts/install-dev.sh` first.
 
 Screenshots and logs end up in `tests/headless/out/`.
 
