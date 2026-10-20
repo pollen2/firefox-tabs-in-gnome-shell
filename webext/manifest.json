@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "name": "Tabs in GNOME Shell",
+  "version": "0.1.0",
+  "description": "Lists your windows, tab groups and tabs in the GNOME Shell top bar. Needs the companion GNOME Shell extension and native host.",
+  "homepage_url": "https://github.com/pollen2/firefox-tabs-in-gnome-shell",
+  "permissions": ["tabs", "tabGroups", "nativeMessaging"],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "firefox-tabs@pollen2.github.io",
+      "strict_min_version": "139.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

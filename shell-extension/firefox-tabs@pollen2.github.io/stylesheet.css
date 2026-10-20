@@ -1,0 +1,48 @@
+.ff-tabs-scroll {
+  width: 28em;
+}
+
+.ff-depth-1 { padding-left: 1.75em; }
+.ff-depth-2 { padding-left: 3.5em; }
+
+.ff-header-label {
+  font-weight: bold;
+}
+
+.ff-count {
+  font-size: 0.85em;
+  font-feature-settings: "tnum";
+}
+
+.ff-group-dot {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 0.3em;
+}
+
+.ff-color-grey   { background-color: #9e9ea7; }
+.ff-color-blue   { background-color: #3584e4; }
+.ff-color-purple { background-color: #9141ac; }
+.ff-color-cyan   { background-color: #26a5c4; }
+.ff-color-green  { background-color: #2ec27e; }
+.ff-color-yellow { background-color: #e5a50a; }
+.ff-color-orange { background-color: #e66100; }
+.ff-color-red    { background-color: #e01b24; }
+.ff-color-pink   { background-color: #dc5098; }
+
+.ff-more {
+  font-style: italic;
+}
+
+.ff-tab-icon {
+  icon-size: 16px;
+}
+
+.ff-active {
+  font-weight: bold;
+}
+
+.ff-tab-status,
+.ff-tab-close {
+  icon-size: 14px;
+}

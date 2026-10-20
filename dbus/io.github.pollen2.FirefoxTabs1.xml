@@ -1,0 +1,73 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!--
+  Contract between the native host (one per running Firefox instance) and the
+  GNOME Shell extension.
+
+  Bus name:    io.github.pollen2.FirefoxTabs.i<firefox pid>
+               (claimed once the first snapshot has arrived; watch the
+               namespace io.github.pollen2.FirefoxTabs with arg0namespace)
+  Object path: /io/github/pollen2/FirefoxTabs
+
+  Tab, window and group ids are the WebExtension ids, passed as int64.
+  Methods that act on Firefox fail with org.freedesktop.DBus.Error.Failed
+  carrying the WebExtension error message.
+-->
+<node>
+  <interface name="io.github.pollen2.FirefoxTabs1">
+    <!--
+      Latest snapshot as JSON (see docs/snapshot.md). serial increases on
+      every change, so a client can skip parsing when it is unchanged.
+    -->
+    <method name="GetSnapshot">
+      <arg name="serial" type="u" direction="out"/>
+      <arg name="json" type="s" direction="out"/>
+    </method>
+
+    <!--
+      Makes the tab active in its window. Returns JSON: {id, windowId, title,
+      focusOrder}, focusOrder being Firefox's window ids, most recently
+      focused first.
+    -->
+    <method name="ActivateTab">
+      <arg name="tab_id" type="x" direction="in"/>
+      <arg name="tab" type="s" direction="out"/>
+    </method>
+
+    <method name="CloseTabs">
+      <arg name="tab_ids" type="ax" direction="in"/>
+    </method>
+
+    <!-- index -1 moves to the end of the window. -->
+    <method name="MoveTabs">
+      <arg name="tab_ids" type="ax" direction="in"/>
+      <arg name="window_id" type="x" direction="in"/>
+      <arg name="index" type="i" direction="in"/>
+    </method>
+
+    <method name="MoveTabToNewWindow">
+      <arg name="tab_id" type="x" direction="in"/>
+    </method>
+
+    <!--
+      group_id -1 creates a new group, in window_id or, if that is -1 too, in
+      the first tab's window. Returns the group id.
+    -->
+    <method name="GroupTabs">
+      <arg name="tab_ids" type="ax" direction="in"/>
+      <arg name="group_id" type="x" direction="in"/>
+      <arg name="window_id" type="x" direction="in"/>
+      <arg name="new_group_id" type="x" direction="out"/>
+    </method>
+
+    <method name="UngroupTabs">
+      <arg name="tab_ids" type="ax" direction="in"/>
+    </method>
+
+    <signal name="Changed">
+      <arg name="serial" type="u"/>
+    </signal>
+
+    <property name="FirefoxPid" type="u" access="read"/>
+  </interface>
+</node>

@@ -1,0 +1,7 @@
+{
+  "name": "io.github.pollen2.firefox_tabs",
+  "description": "Shows Firefox tabs in the GNOME Shell top bar",
+  "path": "@HOST_PATH@",
+  "type": "stdio",
+  "allowed_extensions": ["firefox-tabs@pollen2.github.io"]
+}

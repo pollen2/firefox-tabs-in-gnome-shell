@@ -1,0 +1,20 @@
+[package]
+name = "firefox-tabs-host"
+version = "0.1.0"
+edition = "2024"
+description = "Native messaging host bridging Firefox tabs to GNOME Shell over D-Bus"
+repository = "https://github.com/pollen2/firefox-tabs-in-gnome-shell"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+tokio = { version = "1", features = ["rt", "macros", "io-std", "io-util", "sync", "time"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

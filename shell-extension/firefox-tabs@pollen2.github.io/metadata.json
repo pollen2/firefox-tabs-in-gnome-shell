@@ -1,0 +1,8 @@
+{
+  "uuid": "firefox-tabs@pollen2.github.io",
+  "name": "Firefox Tabs",
+  "description": "Browse, switch to and close your Firefox tabs from the top bar, organized by window and tab group.\n\nNeeds the companion Firefox add-on and native host: see the project page.",
+  "url": "https://github.com/pollen2/firefox-tabs-in-gnome-shell",
+  "shell-version": ["48"],
+  "version-name": "0.1.0"
+}

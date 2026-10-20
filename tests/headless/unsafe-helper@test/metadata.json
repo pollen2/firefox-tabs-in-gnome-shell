@@ -1,0 +1,6 @@
+{
+  "uuid": "unsafe-helper@test",
+  "name": "Unsafe mode (tests only)",
+  "description": "Lets the headless test session use org.gnome.Shell.Eval and Screenshot. Only ever loaded by tests/headless/run.sh.",
+  "shell-version": ["48"]
+}
