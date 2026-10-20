@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Native messaging host bridging Firefox tabs to GNOME Shell over D-Bus"
 repository = "https://github.com/pollen2/firefox-tabs-in-gnome-shell"
+license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]

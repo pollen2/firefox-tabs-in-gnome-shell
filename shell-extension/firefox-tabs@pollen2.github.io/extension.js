@@ -13,7 +13,7 @@ import {WindowRaiser} from './windows.js';
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init(extension) {
-        super._init(0.0, 'Firefox Tabs');
+        super._init(0.0, 'Firefox tabs in top bar');
         this._icons = {
             panel: Gio.icon_new_for_string(`${extension.path}/icons/firefox-tabs-symbolic.svg`),
             page: Gio.icon_new_for_string(`${extension.path}/icons/page-symbolic.svg`),

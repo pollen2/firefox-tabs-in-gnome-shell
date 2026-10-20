@@ -66,3 +66,7 @@ session with its own settings, so your session is not touched. It runs:
   Needs `scripts/install-dev.sh` first.
 
 Screenshots and logs end up in `tests/headless/out/`.
+
+## License
+
+GPL-3.0-or-later, see [LICENSE](LICENSE).
