@@ -23,13 +23,14 @@ failed=0
 for scenario in "$@"; do
     name=$(basename "$scenario" .sh)
     work=$(mktemp -d -t firefox-tabs-test.XXXXXX)
-    mkdir -p "$work"/{data/gnome-shell/extensions,config,cache,state}
+    mkdir -p "$work"/{data/gnome-shell/extensions,config,cache,state,runtime}
+    chmod 700 "$work/runtime"
     ln -s "$ROOT/shell-extension/firefox-tabs@pollen2.github.io" "$work/data/gnome-shell/extensions/"
     ln -s "$HERE/unsafe-helper@test" "$work/data/gnome-shell/extensions/"
 
     echo "== $name"
     XDG_DATA_HOME="$work/data" XDG_CONFIG_HOME="$work/config" \
-    XDG_CACHE_HOME="$work/cache" XDG_STATE_HOME="$work/state" \
+    XDG_CACHE_HOME="$work/cache" XDG_STATE_HOME="$work/state" XDG_RUNTIME_DIR="$work/runtime" \
     ROOT="$ROOT" HERE="$HERE" OUT="$OUT" WORK="$work" NAME="$name" \
         dbus-run-session -- "$HERE/session.sh" "$(realpath "$scenario")" 2>"$OUT/$name.session.log" |
         grep --line-buffered -E '^(PASS|FAIL|INFO)' | tee "$work/results"

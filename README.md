@@ -4,8 +4,8 @@ A top bar menu listing your open Firefox tabs, organized by window and tab
 group. Click a tab to switch to it. Middle-click it, click its ×, or press
 Delete to close it.
 
-**Status: early development.** Switching and closing tabs work. Favicons,
-search, and moving tabs between windows and groups come next.
+**Status: early development.** Switching and closing tabs work, with favicons.
+Search and moving tabs between windows and groups come next.
 
 ## How it works
 
@@ -16,7 +16,8 @@ Firefox add-on ──native messaging──▶ firefox-tabs-host ──D-Bus─�
 
 - **The add-on** watches tab, window and tab group events. It sends a snapshot
   to the host about 150 ms after each change, and runs the host's commands
-  (switch, close, move, group).
+  (switch, close, move, group). Favicons are re-encoded as small PNGs that
+  the host saves under `$XDG_RUNTIME_DIR/firefox-tabs/icons/`.
 - **The host** is started by Firefox and exits with it. It keeps the latest
   snapshot and serves it on the session bus as
   `io.github.pollen2.FirefoxTabs.i<firefox pid>`. See

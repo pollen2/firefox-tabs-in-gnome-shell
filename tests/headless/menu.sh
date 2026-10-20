@@ -11,6 +11,10 @@ echo "INFO open with 600 tabs: $(ev 'T.lastOpenMs') ms, $(ev 'T.tabItems().lengt
 ev 'T.timeOpen()' >/dev/null; sleep 0.5
 echo "INFO reopen, nothing changed: $(ev 'T.lastOpenMs') ms"
 check "only the current window's first rows are built" 'T.tabItems().length <= 60'
+check "tabs show their favicon file" \
+    'T.tabItems().filter(i => i.tab.icon).length > 0 && T.tabItems().filter(i => i.tab.icon).every(i => i.icon.gicon.get_file?.()?.query_exists(null))'
+check "tabs without a favicon show the placeholder" \
+    'T.tabItems().filter(i => !i.tab.icon).every(i => i.icon.gicon === T.indicator()._icons.page)'
 shot menu
 
 ev 'globalThis._rows = T.visibleTabItems().length; T.click(T.headers()[0])' >/dev/null; sleep 0.4

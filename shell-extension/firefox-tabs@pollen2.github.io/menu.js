@@ -56,16 +56,19 @@ class HeaderItem extends PopupMenu.PopupBaseMenuItem {
 
 export const TabItem = GObject.registerClass(
 class TabItem extends PopupMenu.PopupBaseMenuItem {
-    _init(tab, {depth, placeholderIcon, onActivate, onClose}) {
+    _init(tab, {depth, icon, fallbackIcon, onActivate, onClose}) {
         super._init({style_class: `ff-tab ff-depth-${depth}`});
         this.tab = tab;
         this._onClose = onClose;
 
-        this.add_child(new St.Icon({
-            gicon: placeholderIcon,
+        // St loads icons in the background and caches them by file.
+        this.icon = new St.Icon({
+            gicon: icon,
+            fallback_gicon: fallbackIcon,
             style_class: 'ff-tab-icon',
             y_align: Clutter.ActorAlign.CENTER,
-        }));
+        });
+        this.add_child(this.icon);
         this.label = ellipsizedLabel(tab.title || tab.url || '', tab.active ? 'ff-tab-label ff-active' : 'ff-tab-label');
         this.add_child(this.label);
         this.label_actor = this.label;

@@ -3,6 +3,7 @@
 //! the bus name.
 
 mod bridge;
+mod icons;
 mod native;
 mod service;
 
@@ -13,6 +14,7 @@ use tokio::sync::mpsc;
 use zbus::fdo::RequestNameFlags;
 
 use bridge::{Bridge, Event};
+use icons::IconStore;
 use service::{BUS_NAME_PREFIX, OBJECT_PATH, Service};
 
 #[tokio::main(flavor = "current_thread")]
@@ -28,8 +30,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
     // owns the windows; the shell uses this pid to find them.
     let firefox_pid = std::os::unix::process::parent_id();
 
+    // Without a runtime dir the menu just shows placeholder icons.
+    let icons = icons::default_dir().and_then(|dir| match IconStore::open(dir) {
+        Ok(store) => Some(store),
+        Err(e) => {
+            eprintln!("firefox-tabs-host: icon directory unavailable: {e}");
+            None
+        }
+    });
+
     let (to_extension, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
-    let bridge = Arc::new(Bridge::new(to_extension));
+    let bridge = Arc::new(Bridge::new(to_extension, icons));
 
     let connection = zbus::connection::Builder::session()?
         .serve_at(OBJECT_PATH, Service { bridge: bridge.clone(), firefox_pid })?

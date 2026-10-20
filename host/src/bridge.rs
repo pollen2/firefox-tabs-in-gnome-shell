@@ -9,6 +9,8 @@ use serde_json::value::RawValue;
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::icons::IconStore;
+
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 type Reply = Result<Value, String>;
@@ -24,6 +26,7 @@ struct State {
 pub struct Bridge {
     state: Mutex<State>,
     to_extension: mpsc::UnboundedSender<Vec<u8>>,
+    icons: Option<IconStore>,
 }
 
 /// One message from the extension. A flat struct rather than a tagged enum:
@@ -40,6 +43,8 @@ struct Incoming<'a> {
     ok: bool,
     result: Option<Value>,
     error: Option<String>,
+    key: Option<String>,
+    png: Option<String>,
 }
 
 pub enum Event {
@@ -48,8 +53,8 @@ pub enum Event {
 }
 
 impl Bridge {
-    pub fn new(to_extension: mpsc::UnboundedSender<Vec<u8>>) -> Self {
-        Self { state: Mutex::default(), to_extension }
+    pub fn new(to_extension: mpsc::UnboundedSender<Vec<u8>>, icons: Option<IconStore>) -> Self {
+        Self { state: Mutex::default(), to_extension, icons }
     }
 
     pub fn snapshot(&self) -> (u32, String) {
@@ -59,6 +64,17 @@ impl Bridge {
 
     pub fn handle(&self, message: &[u8]) -> Result<Event, String> {
         let message: Incoming = serde_json::from_slice(message).map_err(|e| format!("bad message: {e}"))?;
+        if message.kind == "icon" {
+            // Written before the snapshot naming it is handled, as messages
+            // are processed in order.
+            let (Some(key), Some(png)) = (&message.key, &message.png) else {
+                return Err("icon without key or png".into());
+            };
+            if let Some(icons) = &self.icons {
+                icons.store(key, png)?;
+            }
+            return Ok(Event::None);
+        }
         let mut state = self.state.lock().unwrap();
         match message.kind.as_str() {
             "snapshot" => {
@@ -117,7 +133,7 @@ mod tests {
     #[test]
     fn snapshot_is_stored_verbatim_and_bumps_serial() {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let bridge = Bridge::new(tx);
+        let bridge = Bridge::new(tx, None);
         assert_eq!(bridge.snapshot(), (0, String::new()));
 
         let event = bridge.handle(br#"{"type":"snapshot","data":{"schema":1, "windows":[]}}"#).unwrap();
@@ -128,7 +144,7 @@ mod tests {
     #[tokio::test]
     async fn call_resolves_with_reply() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let bridge = std::sync::Arc::new(Bridge::new(tx));
+        let bridge = std::sync::Arc::new(Bridge::new(tx, None));
 
         let caller = tokio::spawn({
             let bridge = bridge.clone();
@@ -146,7 +162,7 @@ mod tests {
     #[tokio::test]
     async fn call_reports_extension_errors() {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let bridge = std::sync::Arc::new(Bridge::new(tx));
+        let bridge = std::sync::Arc::new(Bridge::new(tx, None));
 
         let caller = tokio::spawn({
             let bridge = bridge.clone();

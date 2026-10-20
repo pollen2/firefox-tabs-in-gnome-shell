@@ -6,9 +6,12 @@
     hostctl.py snapshot             readable dump
     hostctl.py group ID,ID          new group from these tabs
     hostctl.py new-window ID        move a tab to a new window
+    hostctl.py icons                each tab's favicon file and its size
 """
 
 import json
+import os
+import struct
 import sys
 
 from gi.repository import Gio, GLib
@@ -45,5 +48,19 @@ elif command == 'group':
     print(call('GroupTabs', GLib.Variant('(axxx)', (ids, -1, -1)))[0])
 elif command == 'new-window':
     call('MoveTabToNewWindow', GLib.Variant('(x)', (int(sys.argv[2]),)))
+elif command == 'icons':
+    icon_dir = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'firefox-tabs', 'icons')
+    for w in snapshot()['windows']:
+        for t in w['tabs']:
+            if 'icon' not in t:
+                print(f"{t['id']} {t['url']} none")
+                continue
+            path = os.path.join(icon_dir, t['icon'] + '.png')
+            if not os.path.exists(path):
+                print(f"{t['id']} {t['url']} missing")
+                continue
+            with open(path, 'rb') as f:
+                width, height = struct.unpack('>II', f.read(24)[16:24])
+            print(f"{t['id']} {t['url']} {width}x{height}")
 else:
     sys.exit(f'unknown command {command}')

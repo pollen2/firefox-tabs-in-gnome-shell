@@ -31,11 +31,12 @@ user_pref("toolkit.startup.max_resumed_crashes", -1);
 EOF
 
 MOZ_ENABLE_WAYLAND=1 "$FIREFOX" --no-remote --profile "$profile" \
-    about:robots about:mozilla about:robots https://www.debian.org/ about:robots >"$OUT/$NAME.firefox.log" 2>&1 &
+    about:robots about:mozilla about:robots https://www.debian.org/ about:robots \
+    https://github.com/ https://en.wikipedia.org/wiki/GNOME >"$OUT/$NAME.firefox.log" 2>&1 &
 FF=$!
 for _ in $(seq 60); do [ -n "$($CTL name 2>/dev/null)" ] && break; sleep 0.5; done
 sleep 2
-read -r R1 MOZ RA DEB RB <<< "$($CTL ids)"
+read -r R1 MOZ RA DEB RB _ <<< "$($CTL ids)"
 check "Firefox instance found" '!!T.instance()'
 
 $CTL group "$MOZ,$DEB" >/dev/null
@@ -61,8 +62,19 @@ activate "$DEB" "tab in a group"
 activate "$R1" "tab titled like the other windows, in the first window"
 activate "$RB" "newest window again"
 
+icons=$($CTL icons)
+echo "$icons" | sed 's/^/INFO favicon: /'
+echo "$icons" | grep -q 'debian.org.* 32x32$' && echo "PASS a web page's favicon is stored as a 32x32 PNG" || echo "FAIL a web page's favicon is stored as a 32x32 PNG"
+echo "$icons" | grep -q 'github.com.* 32x32$' && echo "PASS an SVG favicon is stored as a 32x32 PNG" || echo "FAIL an SVG favicon is stored as a 32x32 PNG"
+echo "INFO favicon files: $(ls "$XDG_RUNTIME_DIR/firefox-tabs/icons" | wc -l), sizes in bytes: $(stat -c %s "$XDG_RUNTIME_DIR"/firefox-tabs/icons/*.png | tr '\n' ' ')"
+echo "$icons" | grep -q 'about:robots none$' && echo "PASS Firefox's own pages have no favicon file" || echo "FAIL Firefox's own pages have no favicon file"
+
 ev 'T.indicator().menu.open()' >/dev/null; sleep 0.6
 check "the group shows in the menu" 'T.headers().length > 0'
+check "Firefox's own pages show Firefox's icon" \
+    'T.tabItems().filter(i => i.tab.url.startsWith("about:")).length > 0 && T.tabItems().filter(i => i.tab.url.startsWith("about:")).every(i => i.icon.gicon && i.icon.gicon !== T.indicator()._icons.page)'
+# Expand every window for the screenshot.
+ev 'T.headers().filter(h => h._arrow.icon_name === "pan-end-symbolic").forEach(h => h.activate(null))' >/dev/null
 shot menu
 
 kill $FF; sleep 2

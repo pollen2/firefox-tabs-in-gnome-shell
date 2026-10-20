@@ -1,5 +1,8 @@
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -19,6 +22,7 @@ class Indicator extends PanelMenu.Button {
             page: Gio.icon_new_for_string(`${extension.path}/icons/page-symbolic.svg`),
         };
         this.add_child(new St.Icon({gicon: this._icons.panel, style_class: 'system-status-icon'}));
+        this._iconDir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'firefox-tabs', 'icons']);
 
         this._expandedState = new Map();
         this._renderedKey = null;
@@ -77,15 +81,42 @@ class Indicator extends PanelMenu.Button {
             this._tabsSection.addMenuItem(new PopupMenu.PopupMenuItem('Firefox is not answering', {reactive: false}));
             return;
         }
+        const tabIcon = this._tabIconLookup(ready);
         renderTree(this._tabsSection, ready, {
             expandedState: this._expandedState,
             makeTabItem: (instance, tab, depth) => new TabItem(tab, {
                 depth,
-                placeholderIcon: this._icons.page,
+                icon: tabIcon(instance, tab),
+                fallbackIcon: this._icons.page,
                 onActivate: () => this._activateTab(instance, tab),
                 onClose: item => this._closeTab(instance, item),
             }),
         });
+    }
+
+    // Favicons are files the host writes, named by the snapshot's `icon` key.
+    // Firefox's own pages (about:) have no readable favicon: they get
+    // Firefox's app icon.
+    _tabIconLookup(instances) {
+        const fileIcons = new Map();
+        const appIcons = new Map(instances.map(instance => {
+            const window = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
+                .find(w => w.get_pid() === instance.pid);
+            const app = window && Shell.WindowTracker.get_default().get_window_app(window);
+            return [instance, app?.get_icon() ?? null];
+        }));
+        return (instance, tab) => {
+            if (tab.icon) {
+                if (!fileIcons.has(tab.icon)) {
+                    const path = GLib.build_filenamev([this._iconDir, `${tab.icon}.png`]);
+                    fileIcons.set(tab.icon, new Gio.FileIcon({file: Gio.File.new_for_path(path)}));
+                }
+                return fileIcons.get(tab.icon);
+            }
+            if (tab.url?.startsWith('about:'))
+                return appIcons.get(instance) ?? this._icons.page;
+            return this._icons.page;
+        };
     }
 
     async _activateTab(instance, tab) {
