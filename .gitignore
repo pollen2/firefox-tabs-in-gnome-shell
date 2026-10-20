@@ -1,3 +1,4 @@
 /host/target/
 /tests/headless/out/
 __pycache__/
+gschemas.compiled

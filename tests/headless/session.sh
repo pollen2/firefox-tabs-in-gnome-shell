@@ -10,6 +10,9 @@ gnome-shell --headless --wayland --no-x11 --wayland-display="firefox-tabs-test-$
     --virtual-monitor 1280x800 >"$OUT/$NAME.shell.log" 2>&1 &
 SHELL_PID=$!
 export WAYLAND_DISPLAY="firefox-tabs-test-$$"
+# Apps started over D-Bus (the preferences window) need to find the shell,
+# as gnome-session would arrange in a real session.
+dbus-update-activation-environment WAYLAND_DISPLAY
 
 # Evaluates JS in the shell and prints its result (strings unquoted).
 ev() {

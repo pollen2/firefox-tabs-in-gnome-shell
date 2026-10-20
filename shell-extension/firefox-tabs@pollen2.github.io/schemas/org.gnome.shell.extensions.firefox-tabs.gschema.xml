@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.firefox-tabs" path="/org/gnome/shell/extensions/firefox-tabs/">
+    <key name="toggle-menu" type="as">
+      <!-- Unset by default so it can't clash with an existing shortcut. -->
+      <default>[]</default>
+      <summary>Open the tab menu</summary>
+      <description>Keyboard shortcut that opens or closes the tab menu, as GTK accelerator strings such as "&lt;Super&gt;t".</description>
+    </key>
+  </schema>
+</schemalist>

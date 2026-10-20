@@ -15,6 +15,8 @@ sed "s|@HOST_PATH@|$ROOT/host/target/release/firefox-tabs-host|" \
     "$ROOT/packaging/$HOST_NAME.json.in" > "$MANIFEST_DIR/$HOST_NAME.json"
 echo "Native host registered: $MANIFEST_DIR/$HOST_NAME.json"
 
+glib-compile-schemas --strict "$ROOT/shell-extension/$UUID/schemas"
+
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
 mkdir -p "$EXT_DIR"
 ln -sfn "$ROOT/shell-extension/$UUID" "$EXT_DIR/$UUID"

@@ -263,9 +263,20 @@ export default class FirefoxTabsExtension extends Extension {
     enable() {
         this._indicator = new Indicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
+
+        // Mutter follows changes to the setting by itself. POPUP: an open menu
+        // (ours included, to close it again) holds a grab.
+        this._settings = this.getSettings();
+        Main.wm.addKeybinding('toggle-menu', this._settings, Meta.KeyBindingFlags.NONE,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP, () => {
+                if (this._indicator.visible)
+                    this._indicator.menu.toggle();
+            });
     }
 
     disable() {
+        Main.wm.removeKeybinding('toggle-menu');
+        this._settings = null;
         this._indicator.destroy();
         this._indicator = null;
     }

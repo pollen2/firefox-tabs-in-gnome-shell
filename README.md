@@ -8,8 +8,12 @@ Type to search: every word must appear in a tab's title or address, ignoring
 case and accents. Enter switches to the first result, and Down moves into the
 list.
 
+To open the menu from the keyboard, set a shortcut in the extension's
+preferences (`gnome-extensions prefs firefox-tabs@pollen2.github.io`). None is
+set by default, so it can't clash with your existing shortcuts.
+
 **Status: early development.** Switching, closing and searching tabs work,
-with favicons. Moving tabs between windows and groups comes next.
+with favicons and a keyboard shortcut. Moving tabs between windows and groups comes next.
 
 ## How it works
 
@@ -58,8 +62,9 @@ This builds the host (needs Rust), registers it with Firefox
 ## Tests
 
 ```sh
-cargo test --manifest-path host/Cargo.toml   # host unit tests
-tests/headless/run.sh                        # full stack in a throwaway headless GNOME Shell
+cargo test --manifest-path host/Cargo.toml                 # host unit tests
+GSETTINGS_BACKEND=memory gjs -m tests/accelerators.test.js # shortcut helpers
+tests/headless/run.sh                                      # full stack in a throwaway headless GNOME Shell
 ```
 
 `tests/headless/run.sh` starts a headless GNOME Shell on a private D-Bus
@@ -67,6 +72,8 @@ session with its own settings, so your session is not touched. It runs:
 
 - `menu.sh`: menu behaviour and speed against a fake Firefox
   (`tests/headless/fake-firefox.py`, also handy for UI work without a browser).
+- `shortcut.sh`: the keyboard shortcut, and setting it in the real
+  preferences window from the keyboard.
 - `raise.sh`: window raising against a real Firefox with a temporary profile.
   Needs `scripts/install-dev.sh` first.
 

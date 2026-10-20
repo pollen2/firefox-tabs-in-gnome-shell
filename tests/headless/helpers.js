@@ -43,6 +43,17 @@
             globalThis._keyboard.notify_keyval(t + 1000, keyval, Clutter.KeyState.RELEASED);
         },
 
+        // Presses keys in order and releases them in reverse: a combination.
+        combo(...keyvals) {
+            const t = GLib.get_monotonic_time();
+            keyvals.forEach((k, i) => globalThis._keyboard.notify_keyval(t + i * 1000, k, Clutter.KeyState.PRESSED));
+            [...keyvals].reverse().forEach((k, i) =>
+                globalThis._keyboard.notify_keyval(t + (keyvals.length + i) * 1000, k, Clutter.KeyState.RELEASED));
+        },
+
+        // The extension's own settings object, as prefs and the shell use it.
+        settings: () => Main.extensionManager.lookup('firefox-tabs@pollen2.github.io').stateObj.getSettings(),
+
         type(text) {
             for (const char of text)
                 T.key(Clutter.unicode_to_keysym(char.codePointAt(0)));

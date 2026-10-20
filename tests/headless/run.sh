@@ -16,8 +16,10 @@ OUT="$HERE/out"
 mkdir -p "$OUT"
 
 if [ $# -eq 0 ]; then
-    set -- "$HERE/menu.sh" "$HERE/raise.sh"
+    set -- "$HERE/menu.sh" "$HERE/shortcut.sh" "$HERE/raise.sh"
 fi
+
+glib-compile-schemas --strict "$ROOT/shell-extension/firefox-tabs@pollen2.github.io/schemas" || exit 1
 
 failed=0
 for scenario in "$@"; do
