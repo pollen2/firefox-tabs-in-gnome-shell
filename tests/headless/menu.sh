@@ -5,6 +5,11 @@ python3 "$HERE/fake-firefox.py" --windows 3 --tabs 200 2>"$WORK/fake.log" &
 FAKE=$!
 for _ in $(seq 50); do [ "$(ev 'T.indicator().visible')" = True ] && break; sleep 0.1; done
 check "icon shows when Firefox runs" 'T.indicator().visible'
+for _ in $(seq 20); do [ "$(ev 'T.indicator()._countLabel.text')" = 600 ] && break; sleep 0.1; done
+check "the top bar shows the number of tabs" 'T.indicator()._countLabel.text === "600" && T.indicator()._countLabel.visible'
+ev 'T.settings().set_boolean("show-tab-count", false)' >/dev/null; sleep 0.2
+check "the count can be hidden" '!T.indicator()._countLabel.visible'
+ev 'T.settings().reset("show-tab-count")' >/dev/null; sleep 0.2
 
 ev 'T.timeOpen()' >/dev/null; sleep 1
 echo "INFO open with 600 tabs: $(ev 'T.lastOpenMs') ms, $(ev 'T.tabItems().length') rows built"
@@ -24,6 +29,8 @@ check "clicking a window header expands it and keeps the menu open" \
 ev 'globalThis._tab = T.visibleTabItems()[0].tab.id; T.click(T.visibleTabItems()[0], 2)' >/dev/null; sleep 0.4
 check "middle-click closes the tab and keeps the menu open" \
     'T.indicator().menu.isOpen && !T.tabItems().some(i => i.tab.id === _tab)'
+sleep 0.3
+check "the count follows closed tabs" 'T.indicator()._countLabel.text === "599"'
 
 ev 'const item = T.visibleTabItems()[1]; globalThis._tab = item.tab.id; T.clickCloseIcon(item)' >/dev/null; sleep 0.4
 check "the close icon closes the tab and keeps the menu open" \

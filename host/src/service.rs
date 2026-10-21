@@ -62,6 +62,13 @@ impl Service {
         self.firefox_pid
     }
 
+    /// Announced only when it changes, so the shell's panel count costs a
+    /// wakeup per opened or closed tab, not per page load.
+    #[zbus(property)]
+    fn tab_count(&self) -> u32 {
+        self.bridge.tab_count()
+    }
+
     #[zbus(signal)]
     pub async fn changed(emitter: &SignalEmitter<'_>, serial: u32) -> zbus::Result<()>;
 }

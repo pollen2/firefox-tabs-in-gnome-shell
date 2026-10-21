@@ -69,5 +69,13 @@
     </signal>
 
     <property name="FirefoxPid" type="u" access="read"/>
+
+    <!--
+      Number of tabs in the snapshot. PropertiesChanged is only emitted when
+      it changes, unlike Changed.
+    -->
+    <property name="TabCount" type="u" access="read">
+      <annotation name="org.freedesktop.DBus.Property.EmitsChangedSignal" value="true"/>
+    </property>
   </interface>
 </node>

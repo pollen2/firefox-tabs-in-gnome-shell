@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -37,10 +38,17 @@ export default class FirefoxTabsPreferences extends ExtensionPreferences {
         clear.connect('clicked', () => settings.set_strv(SHORTCUT_KEY, []));
         row.connect('activated', () => this._captureShortcut(window, settings));
 
-        const group = new Adw.PreferencesGroup({title: 'Keyboard'});
-        group.add(row);
+        const countRow = new Adw.SwitchRow({title: 'Show the number of tabs'});
+        settings.bind('show-tab-count', countRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        const topBar = new Adw.PreferencesGroup({title: 'Top Bar'});
+        topBar.add(countRow);
+
+        const keyboard = new Adw.PreferencesGroup({title: 'Keyboard'});
+        keyboard.add(row);
+
         const page = new Adw.PreferencesPage();
-        page.add(group);
+        page.add(topBar);
+        page.add(keyboard);
         window.add(page);
     }
 

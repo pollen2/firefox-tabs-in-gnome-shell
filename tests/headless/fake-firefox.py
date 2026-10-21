@@ -58,7 +58,7 @@ def make_snapshot(n_windows, n_tabs, icons):
                 if not any(g['id'] == group_id for g in groups):
                     groups.append({'id': group_id, 'windowId': w, 'title': f'Group {group_id}',
                                    'color': COLORS[len(groups) % len(COLORS)]})
-            tab = {'id': tab_id, 'title': f'Tab {tab_id} — window {w}', 'url': f'https://site{tab_id % 6}.example/{tab_id}',
+            tab = {'id': tab_id, 'index': i, 'title': f'Tab {tab_id} — window {w}', 'url': f'https://site{tab_id % 6}.example/{tab_id}',
                    'groupId': group_id, 'lastAccessed': tab_id, 'pinned': i < 2 or None,
                    'active': i == n_tabs - 1 or None, 'icon': icons[tab_id % len(icons)][0]}
             if i == 2:  # Firefox's own pages have no favicon
@@ -98,7 +98,11 @@ def main():
     print(f'host pid {host.pid}, bus name io.github.pollen2.FirefoxTabs.i{os.getpid()}', file=sys.stderr)
     for key, png in icons:
         send(host.stdin, {'type': 'icon', 'key': key, 'png': base64.b64encode(png).decode()})
-    send(host.stdin, {'type': 'snapshot', 'data': snapshot})
+
+    def send_snapshot():
+        count = sum(len(w['tabs']) for w in snapshot['windows'])
+        send(host.stdin, {'type': 'snapshot', 'data': snapshot, 'tabCount': count})
+    send_snapshot()
 
     while (message := receive(host.stdout)) is not None:
         print('command:', json.dumps(message), file=sys.stderr)
@@ -115,6 +119,10 @@ def main():
         elif op == 'group':
             reply['result'] = a['groupId'] if a['groupId'] != -1 else 99999
         send(host.stdin, reply)
+        if op == 'close':  # like Firefox: closed tabs leave the next snapshot
+            for w in snapshot['windows']:
+                w['tabs'] = [t for t in w['tabs'] if t['id'] not in a['tabIds']]
+            send_snapshot()
 
 
 if __name__ == '__main__':

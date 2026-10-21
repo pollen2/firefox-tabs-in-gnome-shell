@@ -43,7 +43,8 @@ done
 sleep 1
 check "the preferences window opens" 'global.display.focus_window?.get_title() === "Firefox tabs in top bar"'
 shot prefs
-ev "T.key($K.KEY_Tab)" >/dev/null; sleep 0.3
+# Tab goes to the tab count row, then its switch, then the shortcut row.
+for _ in 1 2 3; do ev "T.key($K.KEY_Tab)" >/dev/null; sleep 0.3; done
 ev "T.key($K.KEY_Return)" >/dev/null; sleep 0.8
 shot prefs-capture
 ev "T.combo($K.KEY_Control_L, $K.KEY_Alt_L, $K.KEY_k)" >/dev/null; sleep 0.8

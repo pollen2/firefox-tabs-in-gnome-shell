@@ -7,6 +7,9 @@ start_firefox about:robots about:mozilla about:robots https://www.debian.org/ ab
     https://github.com/ https://en.wikipedia.org/wiki/GNOME || return
 read -r R1 MOZ RA DEB RB _ <<< "$($CTL ids)"
 check "Firefox instance found" '!!T.instance()'
+check "the top bar uses the installed Firefox's monochrome icon" \
+    'T.indicator()._panelIcon.gicon.get_names?.()[0] === "firefox-esr-symbolic"'
+shot panel
 
 $CTL group "$MOZ,$DEB" >/dev/null
 $CTL new-window "$RA"; sleep 1.5

@@ -270,9 +270,19 @@ export function windowTitle(window) {
     return `${active?.title || 'Window'}${window.incognito ? ' (private)' : ''}`;
 }
 
-// Renders instances' snapshots into `section`. `expandedState` maps node keys
-// to the user's last choice, so it survives re-renders.
-export function renderTree(section, instances, {expandedState, makeTabItem}) {
+// Whether a window or group starts expanded: the user's last choice for it,
+// else how it was shown since the menu opened (so a redraw while open, after
+// a drop, doesn't reshuffle the list), else `fallback`.
+function rememberedExpansion(expansion, key, fallback) {
+    const expanded = expansion.user.get(key) ?? expansion.shown.get(key) ?? fallback;
+    expansion.shown.set(key, expanded);
+    return expanded;
+}
+
+// Renders instances' snapshots into `section`. `expansion` holds two maps
+// from node keys to expanded state: `user` (kept for the session) and
+// `shown` (cleared when the menu closes).
+export function renderTree(section, instances, {expansion, makeTabItem}) {
     const windows = instances.flatMap(instance =>
         instance.snapshot.windows.map(window => ({instance, window})));
     const showWindows = windows.length > 1;
@@ -283,8 +293,11 @@ export function renderTree(section, instances, {expandedState, makeTabItem}) {
 
     const node = (parent, key, text, options) => new Node(parent, text, {
         ...options,
-        expanded: expandedState.get(key) ?? options.expanded,
-        onExpandedChanged: expanded => expandedState.set(key, expanded),
+        expanded: rememberedExpansion(expansion, key, options.expanded),
+        onExpandedChanged: expanded => {
+            expansion.user.set(key, expanded);
+            expansion.shown.set(key, expanded);
+        },
     });
 
     const addWindowContent = (parent, instance, window, depth) => {
@@ -294,7 +307,7 @@ export function renderTree(section, instances, {expandedState, makeTabItem}) {
                 parent.addMenuItem(makeTabItem(instance, tab, depth));
                 return;
             }
-            node(parent, `g:${instance.name}:${group.id}`, group.title || 'Unnamed group', {
+            const groupNode = node(parent, `g:${instance.name}:${group.id}`, group.title || 'Unnamed group', {
                 depth,
                 count: tabs.length,
                 color: group.color,
@@ -302,6 +315,7 @@ export function renderTree(section, instances, {expandedState, makeTabItem}) {
                 buildChildren: body => addChunked(body, tabs, depth + 1,
                     t => body.addMenuItem(makeTabItem(instance, t, depth + 1))),
             });
+            groupNode.header.dropTarget = {kind: 'group', instance, windowId: window.id, groupId: group.id};
         });
     };
 
@@ -311,11 +325,12 @@ export function renderTree(section, instances, {expandedState, makeTabItem}) {
             addWindowContent(section, instance, window, 0);
             continue;
         }
-        node(section, `w:${instance.name}:${window.id}`, windowTitle(window), {
+        const windowNode = node(section, `w:${instance.name}:${window.id}`, windowTitle(window), {
             depth: 0,
             count: window.tabs.length,
             expanded: w === current,
             buildChildren: body => addWindowContent(body, instance, window, 1),
         });
+        windowNode.header.dropTarget = {kind: 'window', instance, windowId: window.id};
     }
 }

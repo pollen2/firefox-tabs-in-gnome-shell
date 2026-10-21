@@ -7,5 +7,10 @@
       <summary>Open the tab menu</summary>
       <description>Keyboard shortcut that opens or closes the tab menu, as GTK accelerator strings such as "&lt;Super&gt;t".</description>
     </key>
+    <key name="show-tab-count" type="b">
+      <default>true</default>
+      <summary>Show the number of tabs</summary>
+      <description>Whether the top bar shows how many tabs are open next to the icon.</description>
+    </key>
   </schema>
 </schemalist>

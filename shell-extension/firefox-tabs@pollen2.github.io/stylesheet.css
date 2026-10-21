@@ -59,3 +59,24 @@
 .ff-action-dot {
   margin: 0 0.2em;
 }
+
+.ff-panel-count {
+  font-feature-settings: "tnum";
+}
+
+.ff-panel-box {
+  spacing: 0.2em;
+}
+
+/* Where a dragged tab will land: a bar between rows, or an outline around a
+   header. Drawn over the menu, so rows keep their layout. */
+.ff-drop-marker {
+  background-color: -st-accent-color;
+  border-radius: 1px;
+}
+
+.ff-drop-marker.ff-drop-marker-into {
+  background-color: transparent;
+  border: 2px solid -st-accent-color;
+  border-radius: 12px;
+}

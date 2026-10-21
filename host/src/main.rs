@@ -67,7 +67,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let mut stdin = tokio::io::stdin();
     while let Some(message) = native::read_message(&mut stdin).await? {
         match bridge.handle(&message) {
-            Ok(Event::SnapshotChanged(serial)) => {
+            Ok(Event::SnapshotChanged { serial, tab_count_changed }) => {
                 if !named {
                     connection
                         .request_name_with_flags(
@@ -76,6 +76,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         )
                         .await?;
                     named = true;
+                }
+                if tab_count_changed {
+                    service.get().await.tab_count_changed(service.signal_emitter()).await?;
                 }
                 Service::changed(service.signal_emitter(), serial).await?;
             }

@@ -38,8 +38,41 @@ expect_tab "$RIGHTS" "window 1 of 2, group $GROUP" "Add to a group in another wi
 act "$LICENSE" '"Remove from group"'
 expect_tab "$LICENSE" "* group none" "Remove from group"
 
+# Drag and drop. Now: window 1 = Gort, Licenses, group [Mozilla, Rights];
+# window 2 = Build Configuration.
+order() {  # tab ids per window, "[g]" after grouped ones
+    $CTL order | sed 's/^window [0-9]*: //; s/\[g[0-9]*\]/[g]/g' | tr '\n' '|'
+}
+expect_order() {  # expected, description
+    local got
+    got=$(order)
+    [ "$got" = "$1" ] && echo "PASS $2" || echo "FAIL $2: order is $got, expected $1"
+}
+expand_all='T.headers().filter(h => h._arrow.icon_name === "pan-end-symbolic").forEach(h => h.activate(null))'
+dnd() {  # SOURCE TARGET_ROW_JS WHERE
+    ev 'T.pointerAway(); T.indicator().menu.open()' >/dev/null; sleep 0.6
+    ev "$expand_all" >/dev/null; sleep 0.3
+    ev "T.press(T.treeRow($1))" >/dev/null; sleep 0.2
+    ev "T.moveTo($2, '$3')" >/dev/null; sleep 0.4
+    ev 'T.release()' >/dev/null; sleep 1.5
+}
+
+dnd "$ROBOTS" "T.treeRow($LICENSE)" after
+expect_order "$LICENSE $ROBOTS $MOZILLA[g] $RIGHTS[g]|$BUILDCONFIG|" "drag a tab down, just above a group: it stays out of the group"
+shown='T.tabItems().filter(i => T.indicator()._treeSection.actor.contains(i)).map(i => i.tab.id).join()'
+[ "$(ev "$shown")" = "$LICENSE,$ROBOTS,$MOZILLA,$RIGHTS,$BUILDCONFIG" ] && [ "$(ev 'T.indicator().menu.isOpen')" = True ] &&
+    echo "PASS the open menu redraws in the new order" ||
+    echo "FAIL the open menu redraws in the new order: shows $(ev "$shown"), snapshot serial $(ev 'T.instance().serial')"
+ev 'T.indicator().menu.close()' >/dev/null
+
+dnd "$LICENSE" "T.treeRow($RIGHTS)" before
+expect_order "$ROBOTS $MOZILLA[g] $LICENSE[g] $RIGHTS[g]|$BUILDCONFIG|" "drag a tab between two grouped tabs: it joins the group"
+ev 'T.indicator().menu.close()' >/dev/null
+
+dnd "$BUILDCONFIG" "T.treeRow($ROBOTS)" before
+expect_order "$BUILDCONFIG $ROBOTS $MOZILLA[g] $LICENSE[g] $RIGHTS[g]|" "drag a tab into another window, before its first tab"
+
 ev 'T.pointerAway(); T.indicator().menu.open()' >/dev/null; sleep 0.6
-ev 'T.headers().filter(h => h._arrow.icon_name === "pan-end-symbolic").forEach(h => h.activate(null))' >/dev/null
 shot after-moves
 ev 'T.indicator().menu.close()' >/dev/null
 

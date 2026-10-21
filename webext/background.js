@@ -51,7 +51,9 @@ function scheduleSnapshot(delay = SNAPSHOT_DELAY_MS) {
     snapshotTimer = setTimeout(async () => {
         snapshotTimer = null;
         try {
-            send({type: 'snapshot', data: await buildSnapshot()});
+            const data = await buildSnapshot();
+            const tabCount = data.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+            send({type: 'snapshot', data, tabCount});
         } catch (e) {
             console.error('snapshot failed', e);
         }
@@ -100,6 +102,7 @@ function iconKey(url) {
 function tabInfo(tab) {
     const info = {
         id: tab.id,
+        index: tab.index,
         title: tab.title,
         url: tab.url?.length > MAX_URL_LENGTH ? tab.url.slice(0, MAX_URL_LENGTH) : tab.url,
         groupId: tab.groupId ?? -1,

@@ -11,6 +11,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {renderActions} from './actions.js';
+import {DragDetector, TabDrag} from './drag.js';
 import {InstanceWatcher} from './instances.js';
 import {TabItem, renderResults, renderTree} from './menu.js';
 import {TabIndex} from './search.js';
@@ -19,18 +20,36 @@ import {WindowRaiser} from './windows.js';
 // Printable characters typed while a row has focus go to the search box.
 const PRINTABLE = /^[\p{L}\p{N}\p{P}\p{S}]$/u;
 
+// How long after a drop the list follows Firefox's snapshots.
+const REDRAW_WINDOW_MS = 1500;
+
+// Monochrome Firefox icons installed by the various Firefox packages (we
+// don't ship Mozilla's logo). The installed Firefox's own name goes first.
+const FIREFOX_SYMBOLIC_ICONS = ['firefox-symbolic', 'org.mozilla.firefox-symbolic', 'firefox-esr-symbolic'];
+
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
-    _init(extension) {
+    _init(extension, settings) {
         super._init(0.0, 'Firefox tabs in top bar');
         this._icons = {
             panel: Gio.icon_new_for_string(`${extension.path}/icons/firefox-tabs-symbolic.svg`),
             page: Gio.icon_new_for_string(`${extension.path}/icons/page-symbolic.svg`),
         };
-        this.add_child(new St.Icon({gicon: this._icons.panel, style_class: 'system-status-icon'}));
+        this._panelIcon = new St.Icon({
+            gicon: Gio.ThemedIcon.new_from_names(FIREFOX_SYMBOLIC_ICONS),
+            fallback_gicon: this._icons.panel,
+            style_class: 'system-status-icon',
+        });
+        this._panelIconFromApp = false;
+        this._countLabel = new St.Label({style_class: 'ff-panel-count', y_align: Clutter.ActorAlign.CENTER});
+        settings.bind('show-tab-count', this._countLabel, 'visible', Gio.SettingsBindFlags.GET);
+        const panelBox = new St.BoxLayout({style_class: 'ff-panel-box'});
+        panelBox.add_child(this._panelIcon);
+        panelBox.add_child(this._countLabel);
+        this.add_child(panelBox);
         this._iconDir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'firefox-tabs', 'icons']);
 
-        this._expandedState = new Map();
+        this._expansion = {user: new Map(), shown: new Map()};
         this._renderedKey = null;
         this._rendered = [];
         this._index = null;
@@ -39,16 +58,20 @@ class Indicator extends PanelMenu.Button {
         this._focusSource = 0;
         this._showingActions = false;
         this._actionsOrigin = null;
+        this._drag = null;
+        this._cancelRedrawWait = null;
         this._raiser = new WindowRaiser();
         this._buildMenu();
 
-        this._watcher = new InstanceWatcher(() => this._syncVisibility());
-        this._syncVisibility();
+        this._watcher = new InstanceWatcher(() => this._sync());
+        this._sync();
         this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) {
                 this._refresh();
                 this._focusSearchSoon();
             } else {
+                this._expansion.shown.clear();
+                this._drag?.cancel();
                 this._hideActions();
                 this._entry.text = '';
             }
@@ -79,7 +102,7 @@ class Indicator extends PanelMenu.Button {
             style_class: 'ff-tabs-scroll',
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
-            overlay_scrollbars: true,
+            overlay_scrollbars: false,
             child: this._listSection.actor,
         });
         this.menu.box.add_child(this._scrollView);
@@ -94,6 +117,12 @@ class Indicator extends PanelMenu.Button {
         this._actionsSection = new PopupMenu.PopupMenuSection();
         this._actionsSection.actor.hide();
         this._listSection.addMenuItem(this._actionsSection);
+
+        // Clutter only delivers events to reactive actors: the scroll view
+        // is, the menu sections inside it aren't.
+        this._dragDetector = new DragDetector(this._scrollView,
+            () => this._dropRows().filter(r => r.dropTarget.kind === 'tab'),
+            (row, x, y) => this._startDrag(row.dropTarget.instance, row.tab, row, x, y));
     }
 
     // Shows the tree, the search results or a tab's actions.
@@ -105,10 +134,29 @@ class Indicator extends PanelMenu.Button {
         this._actionsSection.actor.visible = this._showingActions;
     }
 
-    _syncVisibility() {
+    // Panel button: shown while Firefox runs, with the number of tabs.
+    _sync() {
         this.visible = this._watcher.instances.size > 0;
         if (!this.visible)
             this.menu.close();
+        const count = this._watcher.tabCount;
+        this._countLabel.text = String(count);
+        this.accessible_name = `Firefox tabs in top bar: ${count} tabs`;
+        if (this.visible && !this._panelIconFromApp)
+            this._usePanelIconOfRunningFirefox();
+    }
+
+    // Prefers the monochrome icon matching the running Firefox's own app icon
+    // ("firefox-esr" -> "firefox-esr-symbolic").
+    _usePanelIconOfRunningFirefox() {
+        const pids = new Set([...this._watcher.instances.values()].map(i => i.pid));
+        const window = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null).find(w => pids.has(w.get_pid()));
+        const appIcon = window && Shell.WindowTracker.get_default().get_window_app(window)?.get_app_info()?.get_icon();
+        if (!(appIcon instanceof Gio.ThemedIcon))
+            return;
+        const names = appIcon.get_names().map(n => `${n}-symbolic`);
+        this._panelIcon.gicon = Gio.ThemedIcon.new_from_names([...names, ...FIREFOX_SYMBOLIC_ICONS]);
+        this._panelIconFromApp = true;
     }
 
     // The menu manager focuses the menu itself right after opening it.
@@ -142,20 +190,23 @@ class Indicator extends PanelMenu.Button {
         this._index = null;
         this._tabIcon = this._tabIconLookup(ready);
 
+        const scroll = this._scrollView.vadjustment.value;
         this._treeSection.removeAll();
         if (ready.length === 0) {
             this._treeSection.addMenuItem(new PopupMenu.PopupMenuItem('Firefox is not answering', {reactive: false}));
             return;
         }
         renderTree(this._treeSection, ready, {
-            expandedState: this._expandedState,
-            makeTabItem: this._makeTabItem.bind(this),
+            expansion: this._expansion,
+            makeTabItem: (instance, tab, depth) => this._makeTabItem(instance, tab, depth, {draggable: true}),
         });
+        this._restoreScroll(scroll);
         // Typed before the snapshot arrived.
         this._onSearchChanged();
     }
 
-    _makeTabItem(instance, tab, depth) {
+    // Tree rows can be dragged; search results are in no meaningful order.
+    _makeTabItem(instance, tab, depth, {draggable = false} = {}) {
         const item = new TabItem(tab, {
             depth,
             icon: this._tabIcon(instance, tab),
@@ -164,6 +215,10 @@ class Indicator extends PanelMenu.Button {
             onClose: () => this._closeTab(instance, tab),
             onShowActions: origin => this._showActions(instance, tab, origin),
         });
+        if (draggable) {
+            const windowId = instance.snapshot.windows.find(w => w.tabs.includes(tab)).id;
+            item.dropTarget = {kind: 'tab', instance, windowId, tab};
+        }
         const key = `${instance.name}:${tab.id}`;
         if (!this._rows.has(key))
             this._rows.set(key, new Set());
@@ -198,6 +253,119 @@ class Indicator extends PanelMenu.Button {
             if (tab.url?.startsWith('about:'))
                 return appIcons.get(instance) ?? this._icons.page;
             return this._icons.page;
+        };
+    }
+
+    // After a re-render the content is laid out later; set the value then too.
+    _restoreScroll(value) {
+        const adjustment = this._scrollView.vadjustment;
+        adjustment.value = value;
+        if (value === 0)
+            return;
+        const id = adjustment.connect('changed', () => {
+            adjustment.disconnect(id);
+            adjustment.value = Math.min(value, adjustment.upper - adjustment.page_size);
+        });
+    }
+
+    // Shown tree rows that take drops: tabs, group and window headers.
+    _dropRows() {
+        const rows = [];
+        const collect = actor => {
+            if (actor.dropTarget && actor.is_mapped())
+                rows.push(actor);
+            actor.get_children().forEach(collect);
+        };
+        if (this._treeSection.actor.is_mapped())
+            collect(this._treeSection.actor);
+        return rows;
+    }
+
+    _startDrag(instance, tab, row, x, y) {
+        this._drag?.cancel();
+        const rows = this._dropRows();
+        const incognito = id => !!instance.snapshot.windows.find(w => w.id === id)?.incognito;
+        const from = instance.snapshot.windows.find(w => w.tabs.includes(tab));
+
+        this._drag = new TabDrag(row, {
+            container: this._scrollView,
+            scrollView: this._scrollView,
+            rows: () => rows.filter(r => r.is_mapped()),
+            // Firefox can't move tabs between profiles, or between private
+            // and normal windows; pinned tabs can't join groups.
+            accepts: target => target.instance === instance &&
+                incognito(target.windowId) === !!from.incognito &&
+                !(tab.pinned && target.kind === 'group'),
+            onDrop: target => this._dropTab(instance, tab, target),
+            onEnd: () => {
+                this._drag = null;
+            },
+        });
+        this._drag.update(x, y);
+    }
+
+    // Firefox adds a tab to a group when it lands next to one of its tabs,
+    // and ungrouping a tab at a group's edge leaves it in place. So: move to
+    // the slot, then ungroup if the slot isn't meant to be in a group.
+    async _dropTab(instance, tab, target) {
+        const windows = instance.snapshot.windows;
+        const from = windows.find(w => w.tabs.includes(tab));
+        const to = windows.find(w => w.id === target.windowId);
+        this._waitForRedraw(instance);
+        try {
+            if (target.kind === 'group') {
+                await instance.groupTabs([tab.id], target.groupId);
+                return;
+            }
+            let prev = to.tabs.at(-1);
+            let next = null;
+            let intoGroup = -1;
+            if (target.kind === 'tab') {
+                const i = to.tabs.indexOf(target.tab);
+                [prev, next] = target.position === 'before'
+                    ? [to.tabs[i - 1], target.tab]
+                    : [target.tab, to.tabs[i + 1]];
+                intoGroup = target.tab.groupId;
+            }
+            const samePlace = prev === tab || next === tab;
+            if (!samePlace) {
+                const slot = prev ? prev.index + 1 : next.index;
+                const index = target.kind === 'window' ? -1 : from === to && tab.index < slot ? slot - 1 : slot;
+                await instance.moveTabs([tab.id], to.id, index);
+            }
+            const nextToGroup = (prev && prev !== tab && prev.groupId !== -1) || (next && next !== tab && next.groupId !== -1);
+            if (intoGroup === -1 && (tab.groupId !== -1 || nextToGroup)) {
+                await instance.ungroupTabs([tab.id]);
+            } else if (intoGroup !== -1 && samePlace && tab.groupId !== intoGroup) {
+                // Joining sends it to the group's end: put it back.
+                await instance.groupTabs([tab.id], intoGroup);
+                await instance.moveTabs([tab.id], to.id, tab.index);
+            }
+        } catch (e) {
+            this._cancelRedrawWait?.();
+            console.error('firefox-tabs: moving tab failed', e);
+            Main.notifyError('Firefox tabs', e.message);
+        }
+    }
+
+    // Redraws the list as Firefox reports the new order. A move can take
+    // a couple of snapshots, and an unrelated one (a page title) may come
+    // first, so keep following them for a moment.
+    _waitForRedraw(instance) {
+        this._cancelRedrawWait?.();
+        const stopWatching = instance.watchChanges(() => {
+            if (this.menu.isOpen)
+                this._refresh();
+        });
+        const timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, REDRAW_WINDOW_MS, () => {
+            stopWatching();
+            this._cancelRedrawWait = null;
+            return GLib.SOURCE_REMOVE;
+        });
+        this._cancelRedrawWait = () => {
+            stopWatching();
+            GLib.source_remove(timeout);
+            this._cancelRedrawWait = null;
         };
     }
 
@@ -320,6 +488,9 @@ class Indicator extends PanelMenu.Button {
         if (this._focusSource)
             GLib.source_remove(this._focusSource);
         this._actionsOrigin?.disconnectObject(this);
+        this._drag?.cancel();
+        this._dragDetector.destroy();
+        this._cancelRedrawWait?.();
         this._watcher.destroy();
         this._watcher = null;
         this._raiser.destroy();
@@ -330,12 +501,12 @@ class Indicator extends PanelMenu.Button {
 
 export default class FirefoxTabsExtension extends Extension {
     enable() {
-        this._indicator = new Indicator(this);
+        this._settings = this.getSettings();
+        this._indicator = new Indicator(this, this._settings);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
 
         // Mutter follows changes to the setting by itself. POPUP: an open menu
         // (ours included, to close it again) holds a grab.
-        this._settings = this.getSettings();
         Main.wm.addKeybinding('toggle-menu', this._settings, Meta.KeyBindingFlags.NONE,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP, () => {
                 if (this._indicator.visible)
@@ -345,8 +516,8 @@ export default class FirefoxTabsExtension extends Extension {
 
     disable() {
         Main.wm.removeKeybinding('toggle-menu');
-        this._settings = null;
         this._indicator.destroy();
         this._indicator = null;
+        this._settings = null;
     }
 }

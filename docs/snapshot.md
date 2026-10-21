@@ -13,6 +13,7 @@ it through unchanged.
       "tabs": [
         {
           "id": 12,
+          "index": 3,
           "title": "GNOME - Wikipedia",
           "url": "https://en.wikipedia.org/wiki/GNOME",
           "groupId": 1792459477206018,
@@ -34,6 +35,8 @@ it through unchanged.
 ```
 
 - Only normal browser windows are included. Tabs are in tab-strip order.
+- `index` is the tab's position in its window as Firefox counts it, which
+  includes hidden tabs. It is what `MoveTabs` takes.
 - Boolean fields are left out when false.
 - `groupId` is `-1` for tabs outside a group. Group ids are larger than 32 bits.
 - `url` is cut to 300 characters.

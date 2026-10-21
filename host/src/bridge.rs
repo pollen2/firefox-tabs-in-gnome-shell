@@ -19,6 +19,7 @@ type Reply = Result<Value, String>;
 struct State {
     serial: u32,
     snapshot: String,
+    tab_count: u32,
     next_id: u64,
     pending: HashMap<u64, oneshot::Sender<Reply>>,
 }
@@ -45,10 +46,12 @@ struct Incoming<'a> {
     error: Option<String>,
     key: Option<String>,
     png: Option<String>,
+    #[serde(rename = "tabCount")]
+    tab_count: Option<u32>,
 }
 
 pub enum Event {
-    SnapshotChanged(u32),
+    SnapshotChanged { serial: u32, tab_count_changed: bool },
     None,
 }
 
@@ -60,6 +63,10 @@ impl Bridge {
     pub fn snapshot(&self) -> (u32, String) {
         let state = self.state.lock().unwrap();
         (state.serial, state.snapshot.clone())
+    }
+
+    pub fn tab_count(&self) -> u32 {
+        self.state.lock().unwrap().tab_count
     }
 
     pub fn handle(&self, message: &[u8]) -> Result<Event, String> {
@@ -81,7 +88,10 @@ impl Bridge {
                 let data = message.data.ok_or("snapshot without data")?;
                 state.snapshot = data.get().to_owned();
                 state.serial = state.serial.wrapping_add(1).max(1);
-                Ok(Event::SnapshotChanged(state.serial))
+                let tab_count = message.tab_count.unwrap_or(state.tab_count);
+                let tab_count_changed = tab_count != state.tab_count;
+                state.tab_count = tab_count;
+                Ok(Event::SnapshotChanged { serial: state.serial, tab_count_changed })
             }
             "reply" => {
                 let id = message.id.ok_or("reply without id")?;
@@ -137,8 +147,21 @@ mod tests {
         assert_eq!(bridge.snapshot(), (0, String::new()));
 
         let event = bridge.handle(br#"{"type":"snapshot","data":{"schema":1, "windows":[]}}"#).unwrap();
-        assert!(matches!(event, Event::SnapshotChanged(1)));
+        assert!(matches!(event, Event::SnapshotChanged { serial: 1, .. }));
         assert_eq!(bridge.snapshot(), (1, r#"{"schema":1, "windows":[]}"#.to_owned()));
+    }
+
+    #[test]
+    fn tab_count_change_is_reported_only_when_it_changes() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let bridge = Bridge::new(tx, None);
+        let snapshot = |count: u32| format!(r#"{{"type":"snapshot","data":{{}},"tabCount":{count}}}"#);
+        let changed = |event| matches!(event, Event::SnapshotChanged { tab_count_changed: true, .. });
+
+        assert!(changed(bridge.handle(snapshot(3).as_bytes()).unwrap()));
+        assert!(!changed(bridge.handle(snapshot(3).as_bytes()).unwrap()));
+        assert!(changed(bridge.handle(snapshot(4).as_bytes()).unwrap()));
+        assert_eq!(bridge.tab_count(), 4);
     }
 
     #[tokio::test]

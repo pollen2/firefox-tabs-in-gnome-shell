@@ -88,6 +88,42 @@
             adjustment.value = adjustment.upper - adjustment.page_size;
         },
 
+        // A tab's row in the tree (not the search results).
+        treeRow: tabId => find(a => isA('TabItem')(a) && a.is_mapped() && a.tab.id === tabId &&
+            indicator()._treeSection.actor.contains(a))[0],
+        headerRow: label => T.headers().find(h => h.label.text === label),
+
+        // A drag in three steps, with pauses between them as a hand would:
+        // press(source), moveTo(target, where), release(). `where` is the
+        // target's top quarter ('before'), bottom quarter ('after') or
+        // middle ('into'); moveTo(null, ..., [x, y]) goes to a point.
+        press(source) {
+            const [x, y] = source.get_transformed_position();
+            const [w, h] = source.get_transformed_size();
+            T._at = [x + w / 3, y + h / 2];
+            const t = GLib.get_monotonic_time();
+            pointer.notify_absolute_motion(t, ...T._at);
+            pointer.notify_button(t + 1000, Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+        },
+
+        moveTo(target, where = 'into', [toX, toY] = [0, 0]) {
+            if (target) {
+                const [x, y] = target.get_transformed_position();
+                const [w, h] = target.get_transformed_size();
+                toX = x + w / 3;
+                toY = y + h * {before: 0.25, after: 0.75, into: 0.5}[where];
+            }
+            const [fromX, fromY] = T._at;
+            let t = GLib.get_monotonic_time();
+            for (let i = 1; i <= 10; i++)
+                pointer.notify_absolute_motion(t += 1000, fromX + (toX - fromX) * i / 10, fromY + (toY - fromY) * i / 10);
+            T._at = [toX, toY];
+        },
+
+        release() {
+            pointer.notify_button(GLib.get_monotonic_time(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+        },
+
         // Hovering a row moves keyboard focus to it, as in any shell menu.
         pointerAway() {
             pointer.notify_absolute_motion(GLib.get_monotonic_time(), 10, 790);
